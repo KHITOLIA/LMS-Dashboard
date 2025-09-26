@@ -44,26 +44,27 @@ PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
 TEMPLATES_DIR = BASE_DIR / 'templates'
 DB_PATH = BASE_DIR / 'lms.db'
 
-SECRET_KEY = os.environ.get('LMS_SECRET_KEY', 'dev-secret-key')
 ALLOWED_EXTENSIONS = {'mp4', 'mkv', 'webm', 'wav', 'mp3', 'ogg', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar', 'txt', 'csv', 'json', 'py', 'ipynb', 'html', 'css', 'js'}
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024 * 1024  # 5 GB
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = SECRET_KEY
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
+
+app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "dev_secret_key")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///lms.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = os.getenv('MAIL_PORT', 587)
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
-app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'False') == 'True'
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
+db = SQLAlchemy(app)
+
+app.config['MAIL_SERVER']   = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+app.config['MAIL_PORT']     = int(os.environ.get("MAIL_PORT", 587))
+app.config['MAIL_USE_TLS']  = os.environ.get("MAIL_USE_TLS", "True") == "True"
+app.config['MAIL_USE_SSL']  = os.environ.get("MAIL_USE_SSL", "False") == "True"
+app.config['MAIL_USERNAME'] = os.environ.get("MAIL_USERNAME", "chitkarauniversity390@gmail.com")
+app.config['MAIL_PASSWORD'] = os.environ.get("MAIL_PASSWORD", "Tr@pgod@2000")
 
 mail = Mail(app)
-db = SQLAlchemy(app)
+
 
 # ---------------- Models ----------------
 
@@ -1004,5 +1005,6 @@ if __name__ == '__main__':
         db.create_all()
 
 
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 
