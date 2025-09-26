@@ -125,8 +125,9 @@ url("{{ url_for('static', filename='images/lms.jpeg') }}") no-repeat center cent
       <input class="form-control" name="password" placeholder="Password" type="password" required>
       <button class="btn login-btn" type="submit">Login</button>
     </form>
-    <a href="{{ url_for('forgot_password') }}" class="register-btn" style="font-size: 0.9rem; float: right;">Forgot Password?</a>
+    <!-- <a href="{{ url_for('forgot_password') }}" class="register-btn" style="font-size: 0.9rem; float: right;">Forgot Password?</a> -->
     <a href="{{ url_for('register') }}" class="register-btn">Create an Account</a>
   </div>
 </div>
+
 {% endblock %}
