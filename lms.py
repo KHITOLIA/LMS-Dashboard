@@ -15,6 +15,34 @@ load_dotenv()
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 UPLOAD_ROOT = BASE_DIR / 'uploads'
 PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
+
+IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
+
+if IS_RENDER:
+    # Use persistent disk directory mounted at /var/data/
+    PERSISTENT_ROOT = pathlib.Path('/var/data')
+    
+    # Database path (CRITICAL: MUST USE PERSISTENT_ROOT)
+    DB_PATH = PERSISTENT_ROOT / 'lms.db'
+    
+    # Upload paths (CRITICAL: MUST USE PERSISTENT_ROOT)
+    UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
+    PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
+    
+    # Ensure folders exist on the persistent volume
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
+else:
+    # Local paths for development
+    BASE_DIR = pathlib.Path(__file__).parent.resolve()
+    DB_PATH = BASE_DIR / 'lms.db'
+    UPLOAD_ROOT = BASE_DIR / 'uploads'
+    PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
+    
+    # Ensure local paths also exist for development
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
+    
 TEMPLATES_DIR = BASE_DIR / 'templates'
 DB_PATH = BASE_DIR / 'lms.db'
 
@@ -976,5 +1004,6 @@ if __name__ == '__main__':
     
     with app.app_context():
         db.create_all()
+
 
     app.run(debug=True)
