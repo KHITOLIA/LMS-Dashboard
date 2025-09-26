@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 
 # --- Load Environment Variables for Email Config ---
 load_dotenv()
-# --- Load Environment Variables for Email Config ---
-load_dotenv()
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
 UPLOAD_ROOT = BASE_DIR / 'uploads'
@@ -40,7 +38,6 @@ app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
 mail = Mail(app)
 db = SQLAlchemy(app)
-
 
 # ---------------- Models ----------------
 
@@ -980,8 +977,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
 
-
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-
-
+    app.run(debug=True)
