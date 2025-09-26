@@ -147,6 +147,23 @@ class OTP_Token(db.Model): # NEW MODEL FOR OTP
     token = db.Column(db.String(10), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     
+# ---------------- Database Initialization Function (CRITICAL FOR RENDER) ----------------
+def initialize_database(app):
+    with app.app_context():
+        # This creates all tables if they do not exist
+        db.create_all() 
+        
+        # Create default admin if not exists
+        if not User.query.filter_by(email='admin@lms.com').first():
+            admin = User(name='Admin', email='admin@lms.com', role='admin')
+            admin.set_password('admin123')
+            db.session.add(admin)
+            db.session.commit()
+            print('Created default admin: admin@lms.com / admin123')
+
+# Run the initialization function immediately after setup
+initialize_database(app)
+
 # ---------------- Helpers ----------------
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -994,15 +1011,26 @@ def delete_trainer(trainer_id):
     return redirect(url_for('view_all_trainers'))
 
 # ---------------- Initialize ----------------
+# This function must run to create tables when Gunicorn loads the app
+def initialize_database(app):
+    with app.app_context():
+        db.create_all() 
+        
+        # Create default admin if not exists (Only if you desire an automated admin creation)
+        # if not User.query.filter_by(email='admin@lms.com').first():
+        #     admin = User(name='Admin', email='admin@lms.com', role='admin')
+        #     admin.set_password('admin123')
+        #     db.session.add(admin)
+        #     db.session.commit()
+        #     print('Created default admin: admin@lms.com / admin123')
+
+initialize_database(app)
+
 if __name__ == '__main__':
     pathlib.Path('templates').mkdir(exist_ok=True)
     pathlib.Path('static').mkdir(exist_ok=True)
     pathlib.Path('uploads').mkdir(exist_ok=True)
     pathlib.Path('static/profiles').mkdir(exist_ok=True)
     
-    with app.app_context():
-        db.create_all()
-
+    # When running locally via 'python lms.py', tables are already created above.
     app.run(debug=True)
-
-
