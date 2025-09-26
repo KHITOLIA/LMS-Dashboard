@@ -11,11 +11,6 @@ from dotenv import load_dotenv
 
 # --- Load Environment Variables for Email Config ---
 load_dotenv()
-
-BASE_DIR = pathlib.Path(__file__).parent.resolve()
-UPLOAD_ROOT = BASE_DIR / 'uploads'
-PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
-
 IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
 
 if IS_RENDER:
@@ -42,7 +37,10 @@ else:
     # Ensure local paths also exist for development
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
-    
+
+BASE_DIR = pathlib.Path(__file__).parent.resolve()
+UPLOAD_ROOT = BASE_DIR / 'uploads'
+PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
 TEMPLATES_DIR = BASE_DIR / 'templates'
 DB_PATH = BASE_DIR / 'lms.db'
 
@@ -1007,3 +1005,4 @@ if __name__ == '__main__':
 
 
     app.run(debug=True)
+
