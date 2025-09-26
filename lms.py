@@ -18,10 +18,10 @@ BASE_DIR = pathlib.Path(__file__).parent.resolve()
 
 if IS_RENDER:
     # Use persistent disk directory mounted at /var/data/
-    PERSISTENT_ROOT = pathlib.Path('/var/data')
+    # PERSISTENT_ROOT = pathlib.Path('/var/data')
     
     # Database path (CRITICAL: MUST USE PERSISTENT_ROOT)
-    DB_PATH = PERSISTENT_ROOT / 'lms.db'
+    DB_PATH = 'lms.db'
     
     # Upload paths 
     UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
@@ -1004,3 +1004,4 @@ if __name__ == '__main__':
         db.create_all()
 
     app.run(debug=True)
+
