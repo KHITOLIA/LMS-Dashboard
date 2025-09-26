@@ -21,11 +21,11 @@ if IS_RENDER:
     # PERSISTENT_ROOT = pathlib.Path('/var/data')
     
     # Database path (CRITICAL: MUST USE PERSISTENT_ROOT)
-    DB_PATH = 'lms.db'
+    DB_PATH = BASE_DIR / 'lms.db'
     
     # Upload paths 
-    UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
-    PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
+    UPLOAD_ROOT = BASE_DIR / 'uploads'
+    PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
     
     # Ensure folders exist on the persistent volume
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -1004,4 +1004,5 @@ if __name__ == '__main__':
         db.create_all()
 
     app.run(debug=True)
+
 
