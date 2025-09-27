@@ -17,27 +17,27 @@ load_dotenv()
 IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
 BASE_DIR = pathlib.Path(__file__).parent.resolve() 
 
-# 1. Database Path: PostgreSQL uses a URL, so this is used for LOCAL fallback only.
-DB_URL_LOCAL = f'sqlite:///{BASE_DIR / "lms.db"}'
-
+# --- 1. Database Path Definition ---
 if IS_RENDER:
-    # 2. Render Paths: UPLOAD and PROFILE PICS MUST point to the Persistent Disk.
+    # Set Persistent Root for uploads and profiles
     PERSISTENT_ROOT = pathlib.Path('/var/data')
+    
+    # CRITICAL FIX 1: Use Render's provided PostgreSQL URL
+    # Render automatically sets DATABASE_URL in the environment
+    DB_URI = os.getenv('DATABASE_URL') 
+    
+    # Define Upload paths using PERSISTENT_ROOT
     UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
     PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
     
-    # Ensure folders exist on the persistent volume (creation must happen)
+    # Ensure folders exist on the persistent volume
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Render provides DATABASE_URL for PostgreSQL, which takes precedence.
-    # Set the DB URI to the environment variable supplied by Render.
-    DB_URI = os.getenv('DATABASE_URL')
 else:
-    # Local paths for development (using local SQLite)
+    # Local paths for development (Using SQLite)
+    DB_URI = f'sqlite:///{BASE_DIR / "lms.db"}'
     UPLOAD_ROOT = BASE_DIR / 'uploads'
     PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
-    DB_URI = DB_URL_LOCAL
     
     # Ensure local paths exist for development
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -54,8 +54,8 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024 * 1024  # 5 GB
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
-# Use the determined DB_URI for the connection
-app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
+# CRITICAL FIX 2: Use DB_URI which is already set to PostgreSQL URL
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI.replace("postgres://", "postgresql://") if DB_URI and DB_URI.startswith("postgres://") else DB_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
@@ -157,17 +157,16 @@ def allowed_file(filename):
 
 def initialize_database(app):
     with app.app_context():
-        
-        # CRITICAL FIX 1: Ensure folders exist on Render's mounted volume (only relevant if IS_RENDER)
+        # CRITICAL FIX 1: Ensure folders exist on Render's mounted volume
         if IS_RENDER:
             try:
+                # Create the directories inside /var/data before running db commands
                 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
                 PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
             except Exception as e:
                 print(f"CRITICAL ERROR: Failed to create directories in /var/data: {e}")
 
         # CRITICAL FIX 2: Check if the 'batch' table exists before trying to access data.
-        # This handles initialization for both SQLite (local) and PostgreSQL (Render).
         inspector = db.inspect(db.engine)
         if 'batch' not in inspector.get_table_names():
             print("Database structure not found. Creating all tables...")
@@ -747,7 +746,7 @@ def serve_content(batch_id, filename):
         # Using the standard MIME type for Matroska video
         mimetype = 'video/x-matroska'
     
-    # Return the file, explicitly setting as_attachment=False to force inline display (view/stream)
+    # CRITICAL FIX 2: Set as_attachment=False to force the browser to open the file inline (view/stream)
     return send_from_directory(UPLOAD_ROOT / str(batch_id), 
                                filename, 
                                mimetype=mimetype, 
