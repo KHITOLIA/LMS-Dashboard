@@ -13,33 +13,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ----------------- RENDER DEPLOYMENT PATH LOGIC START -----------------
-# CRITICAL: This logic defines paths based on the environment.
 IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
 BASE_DIR = pathlib.Path(__file__).parent.resolve() 
 
-# --- 1. Database Path Definition ---
 if IS_RENDER:
-    # Set Persistent Root for uploads and profiles
+    # Use persistent disk directory mounted at /var/data/
     PERSISTENT_ROOT = pathlib.Path('/var/data')
     
-    # CRITICAL FIX 1: Use Render's provided PostgreSQL URL
-    # Render automatically sets DATABASE_URL in the environment
-    DB_URI = os.getenv('DATABASE_URL') 
-    
-    # Define Upload paths using PERSISTENT_ROOT
+    # Define paths to use the persistent volume
+    DB_PATH = PERSISTENT_ROOT / 'lms.db'
     UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
     PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
     
-    # Ensure folders exist on the persistent volume
-    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-    PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
+    # NOTE: Folder creation is handled by the RENDER BUILD COMMAND (outside of Python code)
 else:
-    # Local paths for development (Using SQLite)
-    DB_URI = f'sqlite:///{BASE_DIR / "lms.db"}'
+    # Local paths for development
+    DB_PATH = BASE_DIR / 'lms.db'
     UPLOAD_ROOT = BASE_DIR / 'uploads'
     PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
     
-    # Ensure local paths exist for development
+    # Ensure local paths exist immediately for local dev
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -54,8 +47,7 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024 * 1024  # 5 GB
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
-# CRITICAL FIX 2: Use DB_URI which is already set to PostgreSQL URL
-app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI.replace("postgres://", "postgresql://") if DB_URI and DB_URI.startswith("postgres://") else DB_URI
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL') if IS_RENDER else f'sqlite:///{DB_PATH}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
@@ -157,14 +149,17 @@ def allowed_file(filename):
 
 def initialize_database(app):
     with app.app_context():
+        
         # CRITICAL FIX 1: Ensure folders exist on Render's mounted volume
+        # We rely on the Render Build Command for initial creation, but this ensures existence later
         if IS_RENDER:
             try:
-                # Create the directories inside /var/data before running db commands
+                # We assume /var/data is mounted. We just create subfolders inside it.
                 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
                 PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                print(f"CRITICAL ERROR: Failed to create directories in /var/data: {e}")
+                # This should no longer cause a crash due to the Build Command fix
+                print(f"Directory creation in /var/data failed but continuing: {e}")
 
         # CRITICAL FIX 2: Check if the 'batch' table exists before trying to access data.
         inspector = db.inspect(db.engine)
