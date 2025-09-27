@@ -1,6 +1,7 @@
 import os
 import pathlib
 import secrets
+import mimetypes # Used for serving files
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -48,7 +49,16 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024 * 1024  # 5 GB
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL') if IS_RENDER else f'sqlite:///{DB_PATH}'
+
+# Determine DB URI (PostgreSQL or SQLite)
+DB_URI = os.getenv('DATABASE_URL')
+if DB_URI and DB_URI.startswith('postgres://'):
+    # FIX: Replace the deprecated 'postgres://' dialect with 'postgresql://' for SQLAlchemy 2.0+
+    DB_URI = DB_URI.replace('postgres://', 'postgresql://', 1)
+elif not DB_URI:
+    DB_URI = f'sqlite:///{DB_PATH}'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
@@ -157,8 +167,7 @@ def initialize_database(app):
                 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
                 PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                # This should no longer cause a crash due to the Build Command fix
-                print(f"Directory creation in /var/data failed but continuing: {e}")
+                print(f"CRITICAL ERROR: Failed to create directories in /var/data: {e}")
 
         # CRITICAL FIX 2: Check if the 'batch' table exists before trying to access data.
         inspector = db.inspect(db.engine)
