@@ -13,30 +13,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ----------------- RENDER DEPLOYMENT PATH LOGIC START -----------------
+# CRITICAL: This logic defines paths based on the environment.
 IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
 BASE_DIR = pathlib.Path(__file__).parent.resolve() 
 
+# 1. Database Path: PostgreSQL uses a URL, so this is used for LOCAL fallback only.
+DB_URL_LOCAL = f'sqlite:///{BASE_DIR / "lms.db"}'
+
 if IS_RENDER:
-    # Use persistent disk directory mounted at /var/data/
-    # PERSISTENT_ROOT = pathlib.Path('/var/data')
+    # 2. Render Paths: UPLOAD and PROFILE PICS MUST point to the Persistent Disk.
+    PERSISTENT_ROOT = pathlib.Path('/var/data')
+    UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
+    PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
     
-    # Database path (CRITICAL: MUST USE PERSISTENT_ROOT)
-    DB_PATH = BASE_DIR / 'lms.db'
-    
-    # Upload paths 
-    UPLOAD_ROOT = BASE_DIR / 'uploads'
-    PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
-    
-    # Ensure folders exist on the persistent volume
+    # Ensure folders exist on the persistent volume (creation must happen)
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Render provides DATABASE_URL for PostgreSQL, which takes precedence.
+    # Set the DB URI to the environment variable supplied by Render.
+    DB_URI = os.getenv('DATABASE_URL')
 else:
-    # Local paths for development
-    DB_PATH = BASE_DIR / 'lms.db'
+    # Local paths for development (using local SQLite)
     UPLOAD_ROOT = BASE_DIR / 'uploads'
     PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
+    DB_URI = DB_URL_LOCAL
     
-    # Ensure local paths also exist for development
+    # Ensure local paths exist for development
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +54,8 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024 * 1024  # 5 GB
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
+# Use the determined DB_URI for the connection
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
@@ -148,26 +152,41 @@ class OTP_Token(db.Model): # NEW MODEL FOR OTP
     expires_at = db.Column(db.DateTime, nullable=False)
     
 # ---------------- Database Initialization Function (CRITICAL FOR RENDER) ----------------
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def initialize_database(app):
     with app.app_context():
-        # This creates all tables if they do not exist
-        db.create_all() 
         
-        # Create default admin if not exists
-        if not User.query.filter_by(email='admin@lms.com').first():
-            admin = User(name='Admin', email='admin@lms.com', role='admin')
-            admin.set_password('admin123')
-            db.session.add(admin)
-            db.session.commit()
-            print('Created default admin: admin@lms.com / admin123')
+        # CRITICAL FIX 1: Ensure folders exist on Render's mounted volume (only relevant if IS_RENDER)
+        if IS_RENDER:
+            try:
+                UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+                PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                print(f"CRITICAL ERROR: Failed to create directories in /var/data: {e}")
+
+        # CRITICAL FIX 2: Check if the 'batch' table exists before trying to access data.
+        # This handles initialization for both SQLite (local) and PostgreSQL (Render).
+        inspector = db.inspect(db.engine)
+        if 'batch' not in inspector.get_table_names():
+            print("Database structure not found. Creating all tables...")
+            db.create_all() 
+            
+            # Create default admin if not exists
+            if not User.query.filter_by(email='admin@lms.com').first():
+                admin = User(name='Admin', email='admin@lms.com', role='admin')
+                admin.set_password('admin123')
+                db.session.add(admin)
+                db.session.commit()
+                print('Created default admin: admin@lms.com / admin123')
+        else:
+            print("Database structure found. Continuing...")
 
 # Run the initialization function immediately after setup
 initialize_database(app)
 
 # ---------------- Helpers ----------------
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 def generate_and_send_otp(user_id, email):
     # Generates a 6-char hex token and sets expiry (e.g., 10 minutes)
     token = secrets.token_hex(3).upper() 
@@ -719,8 +738,21 @@ def upload(batch_id):
     return redirect(url_for('view_batch', batch_id=batch.id))
 
 @app.route('/uploads/<int:batch_id>/<filename>')
-def download(batch_id, filename):
-    return send_from_directory(UPLOAD_ROOT / str(batch_id), filename)
+def serve_content(batch_id, filename):
+    # Get the file's guessed MIME type
+    mimetype = mimetypes.guess_type(filename)[0]
+    
+    # CRITICAL FIX 1: Set explicit MIME type for MKV files
+    if filename.lower().endswith('.mkv'):
+        # Using the standard MIME type for Matroska video
+        mimetype = 'video/x-matroska'
+    
+    # Return the file, explicitly setting as_attachment=False to force inline display (view/stream)
+    return send_from_directory(UPLOAD_ROOT / str(batch_id), 
+                               filename, 
+                               mimetype=mimetype, 
+                               as_attachment=False)
+
 
 @app.route('/delete_recording/<int:rec_id>')
 def delete_recording(rec_id):
@@ -1010,20 +1042,47 @@ def delete_trainer(trainer_id):
     flash(f"Trainer '{trainer.name}' and their corresponding user account have been deleted.", "success")
     return redirect(url_for('view_all_trainers'))
 
+# NEW ROUTE FOR EMBEDDED YOUTUBE/VIDEO SEARCH
+@app.route('/youtube_search')
+def youtube_search():
+    if not session.get('user_id'):
+        # Allow logged-out users to search but restrict content later
+        pass 
+    
+    query = request.args.get('search_query')
+    if not query:
+        flash("Please enter a search query.", 'danger')
+        return redirect(url_for('dashboard'))
+        
+    # Use Google Video Search to find relevant results (most reliable for embedding)
+    # We use a large frame to show results without leaving the LMS
+    search_url = f"https://www.google.com/search?q={query}+tutorial&tbm=vid&igu=1" 
+    # igu=1 helps ensure the page loads within the iframe on some mobile browsers
+    
+    return render_template('youtube_viewer.html', search_url=search_url, query=query)
+
+
 # ---------------- Initialize ----------------
 # This function must run to create tables when Gunicorn loads the app
 def initialize_database(app):
     with app.app_context():
-        db.create_all() 
-        
-        # Create default admin if not exists (Only if you desire an automated admin creation)
-        # if not User.query.filter_by(email='admin@lms.com').first():
-        #     admin = User(name='Admin', email='admin@lms.com', role='admin')
-        #     admin.set_password('admin123')
-        #     db.session.add(admin)
-        #     db.session.commit()
-        #     print('Created default admin: admin@lms.com / admin123')
+        # Check if the 'batch' table exists. If it doesn't, we create the entire structure.
+        inspector = db.inspect(db.engine)
+        if 'batch' not in inspector.get_table_names():
+            print("Database structure not found. Creating all tables...")
+            db.create_all() 
+            
+            # Create default admin if not exists
+            if not User.query.filter_by(email='admin@lms.com').first():
+                admin = User(name='Admin', email='admin@lms.com', role='admin')
+                admin.set_password('admin123')
+                db.session.add(admin)
+                db.session.commit()
+                print('Created default admin: admin@lms.com / admin123')
+        else:
+            print("Database structure found. Continuing...")
 
+# Run the initialization function immediately after setup
 initialize_database(app)
 
 if __name__ == '__main__':
