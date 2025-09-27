@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ----------------- RENDER DEPLOYMENT PATH LOGIC START -----------------
+# CRITICAL: This logic defines paths based on the environment.
 IS_RENDER = os.getenv('RENDER_EXTERNAL_HOSTNAME') is not None
 BASE_DIR = pathlib.Path(__file__).parent.resolve() 
 
@@ -25,14 +26,14 @@ if IS_RENDER:
     UPLOAD_ROOT = PERSISTENT_ROOT / 'uploads'
     PROFILE_PICS_DIR = PERSISTENT_ROOT / 'static' / 'profiles'
     
-    # NOTE: Folder creation is handled by the RENDER BUILD COMMAND (outside of Python code)
+    # NOTE: Folder creation is handled inside initialize_database
 else:
     # Local paths for development
     DB_PATH = BASE_DIR / 'lms.db'
     UPLOAD_ROOT = BASE_DIR / 'uploads'
     PROFILE_PICS_DIR = BASE_DIR / 'static' / 'profiles'
     
-    # Ensure local paths exist immediately for local dev
+    # Ensure local paths exist for development
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -149,12 +150,10 @@ def allowed_file(filename):
 
 def initialize_database(app):
     with app.app_context():
-        
         # CRITICAL FIX 1: Ensure folders exist on Render's mounted volume
-        # We rely on the Render Build Command for initial creation, but this ensures existence later
         if IS_RENDER:
             try:
-                # We assume /var/data is mounted. We just create subfolders inside it.
+                # Create the directories inside /var/data before running db commands
                 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
                 PROFILE_PICS_DIR.mkdir(parents=True, exist_ok=True)
             except Exception as e:
