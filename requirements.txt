@@ -3,4 +3,6 @@ Flask-SQLAlchemy
 Werkzeug
 Flask-Mail
 python-dotenv
+
 gunicorn  # Production WSGI server
+psycopg2
